@@ -8,7 +8,7 @@ import './App.css'
 import { getVacationHomes } from './services/propertiesService'
 import type { VacationHome } from './types/property'
 
-type Language = 'it' | 'en'
+type Language = 'it' | 'en' | 'es' | 'fr'
 
 type BookingFormValues = {
   propertyId: string
@@ -104,31 +104,167 @@ const uiText = {
     validationDateOrder: 'Check-out date must be after check-in',
     validationWhatsapp: 'Please enter a valid WhatsApp number',
   },
+  es: {
+    languageSelector: 'Selector de idioma',
+    heroEyebrow: 'Casas vacacionales en Cefalú',
+    heroTitle: 'Dos viviendas en el corazón de la costa siciliana',
+    heroText:
+      'Descubre Casa Thalassa y Casa al Vecchio Molo: dos opciones cuidadas para estancias relajantes entre mar, centro histórico y autenticidad.',
+    heroCta: 'Descubrir alojamientos',
+    loading: 'Cargando alojamientos...',
+    loadError: 'No ha sido posible cargar los alojamientos en este momento.',
+    mapLabel: 'Ubicación',
+    openGallery: 'Abrir galería',
+    photos: 'fotos',
+    booking: '🛎️ Ver anuncio',
+    openMaps: '🗺️ Abrir en Maps',
+    directions: '🚗 Obtener indicaciones',
+    closeGallery: 'Cerrar galería',
+    prevPhoto: 'Foto anterior',
+    nextPhoto: 'Siguiente foto',
+    photo: 'Foto',
+    of: 'de',
+    keyboardHint: 'usa ← → para navegar, Esc para cerrar',
+    bookingFormTitle: 'Solicita información para reservar',
+    bookingFormSubtitle:
+      'Completa el formulario: te contactaremos por email con disponibilidad y detalles.',
+    propertyLabel: 'Alojamiento',
+    propertyPlaceholder: 'Selecciona un alojamiento',
+    guestsLabel: 'Número de huéspedes (máx. 4)',
+    checkInLabel: 'Fecha de check-in',
+    checkOutLabel: 'Fecha de check-out',
+    emailLabel: 'Email',
+    whatsappLabel: 'Número de WhatsApp (opcional)',
+    submitLabel: 'Enviar solicitud',
+    sendingLabel: 'Enviando...',
+    bookingSuccess: 'Solicitud enviada correctamente. Te responderemos lo antes posible.',
+    bookingError: 'Error al enviar la solicitud. Inténtalo de nuevo.',
+    validationRequired: 'Campo obligatorio',
+    validationGuestsMin: 'Mínimo 1 huésped',
+    validationGuestsMax: 'Máximo 4 huéspedes',
+    validationEmail: 'Introduce un email válido',
+    validationDateOrder: 'La fecha de check-out debe ser posterior al check-in',
+    validationWhatsapp: 'Introduce un número de WhatsApp válido',
+  },
+  fr: {
+    languageSelector: 'Sélecteur de langue',
+    heroEyebrow: 'Maisons de vacances à Cefalù',
+    heroTitle: 'Deux logements au cœur de la côte sicilienne',
+    heroText:
+      'Découvrez Casa Thalassa et Casa al Vecchio Molo : deux solutions soignées pour des séjours relaxants entre mer, centre historique et authenticité.',
+    heroCta: 'Découvrir les logements',
+    loading: 'Chargement des logements...',
+    loadError: 'Impossible de charger les logements pour le moment.',
+    mapLabel: 'Emplacement',
+    openGallery: 'Ouvrir la galerie',
+    photos: 'photos',
+    booking: '🛎️ Voir l’annonce',
+    openMaps: '🗺️ Ouvrir dans Maps',
+    directions: '🚗 Obtenir l’itinéraire',
+    closeGallery: 'Fermer la galerie',
+    prevPhoto: 'Photo précédente',
+    nextPhoto: 'Photo suivante',
+    photo: 'Photo',
+    of: 'sur',
+    keyboardHint: 'utilisez ← → pour naviguer, Esc pour fermer',
+    bookingFormTitle: 'Demander des informations pour réserver',
+    bookingFormSubtitle:
+      'Remplissez le formulaire : nous vous contacterons par e-mail avec disponibilités et détails.',
+    propertyLabel: 'Logement',
+    propertyPlaceholder: 'Sélectionnez un logement',
+    guestsLabel: 'Nombre de voyageurs (max 4)',
+    checkInLabel: 'Date d’arrivée',
+    checkOutLabel: 'Date de départ',
+    emailLabel: 'E-mail',
+    whatsappLabel: 'Numéro WhatsApp (optionnel)',
+    submitLabel: 'Envoyer la demande',
+    sendingLabel: 'Envoi en cours...',
+    bookingSuccess: 'Demande envoyée avec succès. Nous vous répondrons au plus vite.',
+    bookingError: 'Erreur lors de l’envoi de la demande. Réessayez.',
+    validationRequired: 'Champ obligatoire',
+    validationGuestsMin: 'Minimum 1 voyageur',
+    validationGuestsMax: 'Maximum 4 voyageurs',
+    validationEmail: 'Veuillez saisir une adresse e-mail valide',
+    validationDateOrder: 'La date de départ doit être postérieure à la date d’arrivée',
+    validationWhatsapp: 'Veuillez saisir un numéro WhatsApp valide',
+  },
 } as const
 
-const homeTextEn: Record<
-  string,
-  { location: string; description: string; highlights: string[] }
+type HomeTranslation = {
+  location: string
+  description: string
+  highlights: string[]
+}
+
+const homeTextByLanguage: Record<
+  Exclude<Language, 'it'>,
+  Record<string, HomeTranslation>
 > = {
-  'casa-thalassa-cefalu': {
-    location: 'Cefalù, Sicily',
-    description:
-      'A home designed for guests who want to experience Cefalù through comfort, sea views, and walks in the historic center.',
-    highlights: [
-      'Strategic location for beach and old town',
-      'Welcoming atmosphere for couples and families',
-      'Perfect base to explore the Sicilian coastline',
-    ],
+  en: {
+    'casa-thalassa-cefalu': {
+      location: 'Cefalù, Sicily',
+      description:
+        'A home designed for guests who want to experience Cefalù through comfort, sea views, and walks in the historic center.',
+      highlights: [
+        'Strategic location for beach and old town',
+        'Welcoming atmosphere for couples and families',
+        'Perfect base to explore the Sicilian coastline',
+      ],
+    },
+    'casa-al-vecchio-molo': {
+      location: 'Cefalù, Sicily',
+      description:
+        'A character-filled home, ideal for a relaxing stay just a short walk from Cefalù’s main landmarks.',
+      highlights: [
+        'Charming and authentic setting',
+        'Convenient for restaurants, harbor, and seafront',
+        'Great for short or weekly stays',
+      ],
+    },
   },
-  'casa-al-vecchio-molo': {
-    location: 'Cefalù, Sicily',
-    description:
-      'A character-filled home, ideal for a relaxing stay just a short walk from Cefalù’s main landmarks.',
-    highlights: [
-      'Charming and authentic setting',
-      'Convenient for restaurants, harbor, and seafront',
-      'Great for short or weekly stays',
-    ],
+  es: {
+    'casa-thalassa-cefalu': {
+      location: 'Cefalú, Sicilia',
+      description:
+        'Un alojamiento pensado para quienes quieren vivir Cefalú entre confort, vistas al mar y paseos por el casco histórico.',
+      highlights: [
+        'Ubicación estratégica para playa y casco antiguo',
+        'Ambiente acogedor para parejas y familias',
+        'Base perfecta para explorar la costa siciliana',
+      ],
+    },
+    'casa-al-vecchio-molo': {
+      location: 'Cefalú, Sicilia',
+      description:
+        'Un alojamiento con encanto, ideal para una estancia relajante a pocos pasos de los principales puntos de interés de Cefalú.',
+      highlights: [
+        'Entorno auténtico y con encanto',
+        'Cómodo para restaurantes, puerto y paseo marítimo',
+        'Ideal para estancias cortas o semanales',
+      ],
+    },
+  },
+  fr: {
+    'casa-thalassa-cefalu': {
+      location: 'Cefalù, Sicile',
+      description:
+        'Un logement pensé pour ceux qui veulent vivre Cefalù entre confort, vue mer et promenades dans le centre historique.',
+      highlights: [
+        'Emplacement stratégique pour la plage et la vieille ville',
+        'Ambiance chaleureuse pour couples et familles',
+        'Point de départ idéal pour explorer la côte sicilienne',
+      ],
+    },
+    'casa-al-vecchio-molo': {
+      location: 'Cefalù, Sicile',
+      description:
+        'Un logement de caractère, idéal pour un séjour relaxant à quelques pas des principaux sites de Cefalù.',
+      highlights: [
+        'Cadre authentique et plein de charme',
+        'Pratique pour restaurants, port et front de mer',
+        'Parfait pour des séjours courts ou hebdomadaires',
+      ],
+    },
   },
 }
 
@@ -266,7 +402,7 @@ function App() {
       }
     }
 
-    const translation = homeTextEn[home.id]
+    const translation = homeTextByLanguage[language]?.[home.id]
     return {
       location: translation?.location ?? home.location,
       description: translation?.description ?? home.description,
@@ -291,6 +427,20 @@ function App() {
             onClick={() => setLanguage('en')}
           >
             🇬🇧 EN
+          </button>
+          <button
+            type="button"
+            className={`lang-btn ${language === 'es' ? 'active' : ''}`}
+            onClick={() => setLanguage('es')}
+          >
+            🇪🇸 ES
+          </button>
+          <button
+            type="button"
+            className={`lang-btn ${language === 'fr' ? 'active' : ''}`}
+            onClick={() => setLanguage('fr')}
+          >
+            🇫🇷 FR
           </button>
         </div>
         <p className="eyebrow">{t.heroEyebrow}</p>
@@ -504,9 +654,8 @@ function App() {
 
                 {bookingResult && (
                   <p
-                    className={`submit-message ${
-                      bookingResult.type === 'success' ? 'success' : 'error'
-                    }`}
+                    className={`submit-message ${bookingResult.type === 'success' ? 'success' : 'error'
+                      }`}
                   >
                     {bookingResult.message}
                   </p>

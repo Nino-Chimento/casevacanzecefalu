@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import Lightbox from 'yet-another-react-lightbox'
 import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails'
 import 'yet-another-react-lightbox/plugins/thumbnails.css'
@@ -8,6 +9,15 @@ import { getVacationHomes } from './services/propertiesService'
 import type { VacationHome } from './types/property'
 
 type Language = 'it' | 'en'
+
+type BookingFormValues = {
+  propertyId: string
+  guests: number
+  checkIn: string
+  checkOut: string
+  email: string
+  whatsapp?: string
+}
 
 const uiText = {
   it: {
@@ -31,6 +41,26 @@ const uiText = {
     photo: 'Foto',
     of: 'di',
     keyboardHint: 'usa ← → per navigare, Esc per chiudere',
+    bookingFormTitle: 'Richiedi informazioni per prenotare',
+    bookingFormSubtitle:
+      'Compila il form: ti ricontattiamo via email con disponibilità e dettagli.',
+    propertyLabel: 'Casa',
+    propertyPlaceholder: 'Seleziona una casa',
+    guestsLabel: 'Numero ospiti (max 4)',
+    checkInLabel: 'Data check-in',
+    checkOutLabel: 'Data check-out',
+    emailLabel: 'Email',
+    whatsappLabel: 'Numero WhatsApp (opzionale)',
+    submitLabel: 'Invia richiesta',
+    sendingLabel: 'Invio in corso...',
+    bookingSuccess: 'Richiesta inviata correttamente. Ti risponderemo al più presto.',
+    bookingError: 'Errore durante l’invio della richiesta. Riprova.',
+    validationRequired: 'Campo obbligatorio',
+    validationGuestsMin: 'Minimo 1 ospite',
+    validationGuestsMax: 'Massimo 4 ospiti',
+    validationEmail: 'Inserisci un indirizzo email valido',
+    validationDateOrder: 'La data di check-out deve essere successiva al check-in',
+    validationWhatsapp: 'Inserisci un numero WhatsApp valido',
   },
   en: {
     languageSelector: 'Language selector',
@@ -53,6 +83,26 @@ const uiText = {
     photo: 'Photo',
     of: 'of',
     keyboardHint: 'use ← → to navigate, Esc to close',
+    bookingFormTitle: 'Request booking information',
+    bookingFormSubtitle:
+      'Fill out the form and we will contact you by email with availability and details.',
+    propertyLabel: 'Home',
+    propertyPlaceholder: 'Select a home',
+    guestsLabel: 'Number of guests (max 4)',
+    checkInLabel: 'Check-in date',
+    checkOutLabel: 'Check-out date',
+    emailLabel: 'Email',
+    whatsappLabel: 'WhatsApp number (optional)',
+    submitLabel: 'Send request',
+    sendingLabel: 'Sending...',
+    bookingSuccess: 'Request sent successfully. We will get back to you soon.',
+    bookingError: 'Error sending request. Please try again.',
+    validationRequired: 'Required field',
+    validationGuestsMin: 'Minimum 1 guest',
+    validationGuestsMax: 'Maximum 4 guests',
+    validationEmail: 'Please enter a valid email address',
+    validationDateOrder: 'Check-out date must be after check-in',
+    validationWhatsapp: 'Please enter a valid WhatsApp number',
   },
 } as const
 
@@ -92,7 +142,29 @@ function App() {
   const [lightboxSlides, setLightboxSlides] = useState<
     Array<{ src: string; alt: string }>
   >([])
+  const [bookingResult, setBookingResult] = useState<{
+    type: 'success' | 'error'
+    message: string
+  } | null>(null)
   const t = uiText[language]
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    reset,
+    setValue,
+    getValues,
+  } = useForm<BookingFormValues>({
+    defaultValues: {
+      propertyId: '',
+      guests: 1,
+      checkIn: '',
+      checkOut: '',
+      email: '',
+      whatsapp: '',
+    },
+  })
 
   useEffect(() => {
     const loadHomes = async () => {
@@ -108,6 +180,55 @@ function App() {
 
     void loadHomes()
   }, [])
+
+  useEffect(() => {
+    if (homes.length > 0 && !getValues('propertyId')) {
+      setValue('propertyId', homes[0].id)
+    }
+  }, [homes, getValues, setValue])
+
+  const onSubmitBooking = async (values: BookingFormValues) => {
+    const selectedHome = homes.find((home) => home.id === values.propertyId)
+
+    const response = await fetch('/api/send-booking-request', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        propertyId: values.propertyId,
+        propertyName: selectedHome?.name ?? values.propertyId,
+        guests: values.guests,
+        checkIn: values.checkIn,
+        checkOut: values.checkOut,
+        email: values.email,
+        whatsapp: values.whatsapp || null,
+      }),
+    })
+
+    if (!response.ok) {
+      throw new Error('send-error')
+    }
+
+    setBookingResult({ type: 'success', message: t.bookingSuccess })
+    reset({
+      propertyId: selectedHome?.id ?? homes[0]?.id ?? '',
+      guests: 1,
+      checkIn: '',
+      checkOut: '',
+      email: '',
+      whatsapp: '',
+    })
+  }
+
+  const handleBookingSubmit = handleSubmit(async (values) => {
+    setBookingResult(null)
+    try {
+      await onSubmitBooking(values)
+    } catch {
+      setBookingResult({ type: 'error', message: t.bookingError })
+    }
+  })
 
   const openGallery = (home: VacationHome, index = 0) => {
     if (!home.galleryImages || home.galleryImages.length === 0) {
@@ -185,86 +306,214 @@ function App() {
         {error && <p className="info error">{t.loadError}</p>}
 
         {!isLoading && !error && (
-          <section className="home-grid">
-            {homes.map((home) => {
-              const mapQuery = getMapQuery(home)
-              const localizedHome = getLocalizedHome(home)
+          <>
+            <section className="home-grid">
+              {homes.map((home) => {
+                const mapQuery = getMapQuery(home)
+                const localizedHome = getLocalizedHome(home)
 
-              return (
-                <article key={home.id} className="home-card">
-                  <button
-                    type="button"
-                    className="cover-button"
-                    onClick={() => openGallery(home)}
-                  >
-                    <img
-                      className="home-image"
-                      src={home.coverImage}
-                      alt={`Vista della struttura ${home.name}`}
-                    />
-                  </button>
-                  <div className="home-body">
-                    <h2>{home.name}</h2>
-                    <p className="location">{localizedHome.location}</p>
-                    <p className="description-text">{localizedHome.description}</p>
-                    <ul>
-                      {localizedHome.highlights.map((highlight) => (
-                        <li key={highlight}>{highlight}</li>
-                      ))}
-                    </ul>
-
-                    <div className="map-section">
-                      <p className="map-label">{t.mapLabel}</p>
-                      <p className="map-address">{home.address}</p>
-                      <iframe
-                        className="map-embed"
-                        src={getMapsEmbedUrl(mapQuery)}
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
-                        title={`Mappa di ${home.name}`}
+                return (
+                  <article key={home.id} className="home-card">
+                    <button
+                      type="button"
+                      className="cover-button"
+                      onClick={() => openGallery(home)}
+                    >
+                      <img
+                        className="home-image"
+                        src={home.coverImage}
+                        alt={`Vista della struttura ${home.name}`}
                       />
-                    </div>
+                    </button>
+                    <div className="home-body">
+                      <h2>{home.name}</h2>
+                      <p className="location">{localizedHome.location}</p>
+                      <p className="description-text">{localizedHome.description}</p>
+                      <ul>
+                        {localizedHome.highlights.map((highlight) => (
+                          <li key={highlight}>{highlight}</li>
+                        ))}
+                      </ul>
 
-                    <div className="actions">
-                      {home.galleryImages && home.galleryImages.length > 0 && (
-                        <button
-                          type="button"
-                          className="gallery-btn"
-                          onClick={() => openGallery(home)}
+                      <div className="map-section">
+                        <p className="map-label">{t.mapLabel}</p>
+                        <p className="map-address">{home.address}</p>
+                        <iframe
+                          className="map-embed"
+                          src={getMapsEmbedUrl(mapQuery)}
+                          loading="lazy"
+                          referrerPolicy="no-referrer-when-downgrade"
+                          title={`Mappa di ${home.name}`}
+                        />
+                      </div>
+
+                      <div className="actions">
+                        {home.galleryImages && home.galleryImages.length > 0 && (
+                          <button
+                            type="button"
+                            className="gallery-btn"
+                            onClick={() => openGallery(home)}
+                          >
+                            {t.openGallery} ({home.galleryImages.length} {t.photos})
+                          </button>
+                        )}
+                        <a
+                          className="action-link action-booking"
+                          href={home.bookingUrl}
+                          target="_blank"
+                          rel="noreferrer"
                         >
-                          {t.openGallery} ({home.galleryImages.length} {t.photos})
-                        </button>
-                      )}
-                      <a
-                        className="action-link action-booking"
-                        href={home.bookingUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {t.booking}
-                      </a>
-                      <a
-                        className="action-link action-maps"
-                        href={getMapsSearchUrl(mapQuery)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {t.openMaps}
-                      </a>
-                      <a
-                        className="action-link action-directions"
-                        href={getMapsDirectionsUrl(mapQuery)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {t.directions}
-                      </a>
+                          {t.booking}
+                        </a>
+                        <a
+                          className="action-link action-maps"
+                          href={getMapsSearchUrl(mapQuery)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {t.openMaps}
+                        </a>
+                        <a
+                          className="action-link action-directions"
+                          href={getMapsDirectionsUrl(mapQuery)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {t.directions}
+                        </a>
+                      </div>
                     </div>
-                  </div>
-                </article>
-              )
-            })}
-          </section>
+                  </article>
+                )
+              })}
+            </section>
+
+            <section className="booking-form-section">
+              <h3>{t.bookingFormTitle}</h3>
+              <p>{t.bookingFormSubtitle}</p>
+
+              <form className="booking-form" onSubmit={handleBookingSubmit}>
+                <label className="form-field">
+                  <span>{t.propertyLabel}</span>
+                  <select
+                    {...register('propertyId', {
+                      required: t.validationRequired,
+                    })}
+                  >
+                    {homes.length === 0 && (
+                      <option value="">{t.propertyPlaceholder}</option>
+                    )}
+                    {homes.map((home) => (
+                      <option key={home.id} value={home.id}>
+                        {home.name}
+                      </option>
+                    ))}
+                  </select>
+                  {errors.propertyId && (
+                    <small className="field-error">{errors.propertyId.message}</small>
+                  )}
+                </label>
+
+                <label className="form-field">
+                  <span>{t.guestsLabel}</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={4}
+                    {...register('guests', {
+                      required: t.validationRequired,
+                      valueAsNumber: true,
+                      min: { value: 1, message: t.validationGuestsMin },
+                      max: { value: 4, message: t.validationGuestsMax },
+                    })}
+                  />
+                  {errors.guests && (
+                    <small className="field-error">{errors.guests.message}</small>
+                  )}
+                </label>
+
+                <label className="form-field">
+                  <span>{t.checkInLabel}</span>
+                  <input
+                    type="date"
+                    {...register('checkIn', {
+                      required: t.validationRequired,
+                    })}
+                  />
+                  {errors.checkIn && (
+                    <small className="field-error">{errors.checkIn.message}</small>
+                  )}
+                </label>
+
+                <label className="form-field">
+                  <span>{t.checkOutLabel}</span>
+                  <input
+                    type="date"
+                    {...register('checkOut', {
+                      required: t.validationRequired,
+                      validate: (value, formValues) =>
+                        value > formValues.checkIn || t.validationDateOrder,
+                    })}
+                  />
+                  {errors.checkOut && (
+                    <small className="field-error">{errors.checkOut.message}</small>
+                  )}
+                </label>
+
+                <label className="form-field">
+                  <span>{t.emailLabel}</span>
+                  <input
+                    type="email"
+                    {...register('email', {
+                      required: t.validationRequired,
+                      pattern: {
+                        value: /^\S+@\S+\.\S+$/,
+                        message: t.validationEmail,
+                      },
+                    })}
+                  />
+                  {errors.email && (
+                    <small className="field-error">{errors.email.message}</small>
+                  )}
+                </label>
+
+                <label className="form-field">
+                  <span>{t.whatsappLabel}</span>
+                  <input
+                    type="tel"
+                    placeholder="+39 333 1234567"
+                    {...register('whatsapp', {
+                      validate: (value) => {
+                        if (!value) {
+                          return true
+                        }
+                        return /^[+]?[- 0-9()]{6,20}$/.test(value)
+                          ? true
+                          : t.validationWhatsapp
+                      },
+                    })}
+                  />
+                  {errors.whatsapp && (
+                    <small className="field-error">{errors.whatsapp.message}</small>
+                  )}
+                </label>
+
+                <button className="submit-btn" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? t.sendingLabel : t.submitLabel}
+                </button>
+
+                {bookingResult && (
+                  <p
+                    className={`submit-message ${
+                      bookingResult.type === 'success' ? 'success' : 'error'
+                    }`}
+                  >
+                    {bookingResult.message}
+                  </p>
+                )}
+              </form>
+            </section>
+          </>
         )}
       </main>
 

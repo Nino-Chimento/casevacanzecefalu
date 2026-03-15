@@ -1,5 +1,19 @@
+import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import MenuItem from '@mui/material/MenuItem'
+import Paper from '@mui/material/Paper'
+import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs'
+import { DatePicker } from '@mui/x-date-pickers/DatePicker'
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider'
+import type { Dayjs } from 'dayjs'
+import dayjs from 'dayjs'
 import { useEffect, useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import Lightbox from 'yet-another-react-lightbox'
 import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails'
 import 'yet-another-react-lightbox/plugins/thumbnails.css'
@@ -17,6 +31,11 @@ type BookingFormValues = {
   checkOut: string
   email: string
   whatsapp?: string
+}
+
+type AvailabilityRange = {
+  startDate: string
+  endDate: string
 }
 
 const uiText = {
@@ -61,6 +80,16 @@ const uiText = {
     validationEmail: 'Inserisci un indirizzo email valido',
     validationDateOrder: 'La data di check-out deve essere successiva al check-in',
     validationWhatsapp: 'Inserisci un numero WhatsApp valido',
+    availabilityLoading: 'Verifica disponibilita in corso...',
+    availabilitySynced: 'Disponibilita sincronizzata da Booking.com.',
+    availabilityUnavailable: 'Le date selezionate non sono disponibili.',
+    availabilityError: 'Impossibile verificare la disponibilita adesso.',
+    availabilityLocalDev:
+      'Sincronizzazione disponibilita non attiva in npm run dev. Usa vercel dev o produzione.',
+    availabilityInvalidToken:
+      'Link iCal Booking non valido o scaduto. Rigenera il link da Extranet e aggiornalo.',
+    availabilityFeedUnavailable:
+      'Feed Booking temporaneamente non disponibile. Prova di nuovo tra poco.',
   },
   en: {
     languageSelector: 'Language selector',
@@ -103,6 +132,16 @@ const uiText = {
     validationEmail: 'Please enter a valid email address',
     validationDateOrder: 'Check-out date must be after check-in',
     validationWhatsapp: 'Please enter a valid WhatsApp number',
+    availabilityLoading: 'Checking availability...',
+    availabilitySynced: 'Availability synced from Booking.com.',
+    availabilityUnavailable: 'Selected dates are not available.',
+    availabilityError: 'We cannot verify availability right now.',
+    availabilityLocalDev:
+      'Availability sync is not active in npm run dev. Use vercel dev or production.',
+    availabilityInvalidToken:
+      'Booking iCal link is invalid or expired. Regenerate it in the Extranet and update it.',
+    availabilityFeedUnavailable:
+      'Booking feed is temporarily unavailable. Please try again later.',
   },
   es: {
     languageSelector: 'Selector de idioma',
@@ -145,6 +184,16 @@ const uiText = {
     validationEmail: 'Introduce un email válido',
     validationDateOrder: 'La fecha de check-out debe ser posterior al check-in',
     validationWhatsapp: 'Introduce un número de WhatsApp válido',
+    availabilityLoading: 'Comprobando disponibilidad...',
+    availabilitySynced: 'Disponibilidad sincronizada desde Booking.com.',
+    availabilityUnavailable: 'Las fechas seleccionadas no están disponibles.',
+    availabilityError: 'No podemos verificar la disponibilidad ahora.',
+    availabilityLocalDev:
+      'La sincronizacion de disponibilidad no esta activa en npm run dev. Usa vercel dev o produccion.',
+    availabilityInvalidToken:
+      'El enlace iCal de Booking no es valido o ha caducado. Regeneralo en Extranet y actualizalo.',
+    availabilityFeedUnavailable:
+      'El feed de Booking no esta disponible temporalmente. Intentalo mas tarde.',
   },
   fr: {
     languageSelector: 'Sélecteur de langue',
@@ -187,6 +236,16 @@ const uiText = {
     validationEmail: 'Veuillez saisir une adresse e-mail valide',
     validationDateOrder: 'La date de départ doit être postérieure à la date d’arrivée',
     validationWhatsapp: 'Veuillez saisir un numéro WhatsApp valide',
+    availabilityLoading: 'Verification des disponibilites en cours...',
+    availabilitySynced: 'Disponibilites synchronisees depuis Booking.com.',
+    availabilityUnavailable: 'Les dates selectionnees ne sont pas disponibles.',
+    availabilityError: 'Impossible de verifier les disponibilites pour le moment.',
+    availabilityLocalDev:
+      'La synchronisation des disponibilites n est pas active avec npm run dev. Utilisez vercel dev ou la production.',
+    availabilityInvalidToken:
+      'Le lien iCal Booking est invalide ou expire. Regenez-le dans l Extranet et mettez-le a jour.',
+    availabilityFeedUnavailable:
+      'Le flux Booking est temporairement indisponible. Reessayez plus tard.',
   },
 } as const
 
@@ -268,6 +327,8 @@ const homeTextByLanguage: Record<
   },
 }
 
+const whatsappContacts = ['+393204465901', '+393281474979', '+393281474838']
+
 function App() {
   const [language, setLanguage] = useState<Language>('it')
   const [homes, setHomes] = useState<VacationHome[]>([])
@@ -282,15 +343,27 @@ function App() {
     type: 'success' | 'error'
     message: string
   } | null>(null)
+  const [unavailableRanges, setUnavailableRanges] = useState<AvailabilityRange[]>([])
+  const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false)
+  const [availabilityError, setAvailabilityError] = useState(false)
+  const [isAvailabilityApiSupported, setIsAvailabilityApiSupported] = useState(true)
+  const [isAvailabilityTokenInvalid, setIsAvailabilityTokenInvalid] = useState(false)
+  const [isAvailabilityFeedUnavailable, setIsAvailabilityFeedUnavailable] =
+    useState(false)
   const t = uiText[language]
 
   const {
     register,
+    control,
     handleSubmit,
     formState: { errors, isSubmitting },
     reset,
     setValue,
+    setError: setFieldError,
+    clearErrors,
     getValues,
+    watch,
+    trigger,
   } = useForm<BookingFormValues>({
     defaultValues: {
       propertyId: '',
@@ -322,6 +395,143 @@ function App() {
       setValue('propertyId', homes[0].id)
     }
   }, [homes, getValues, setValue])
+
+  const selectedPropertyId = watch('propertyId')
+  const selectedCheckIn = watch('checkIn')
+  const selectedCheckOut = watch('checkOut')
+
+  const getTodayIsoDate = () => {
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    return `${yyyy}-${mm}-${dd}`
+  }
+
+  const todayIsoDate = getTodayIsoDate()
+
+  const addDaysToIsoDate = (isoDate: string, days: number) => {
+    const date = new Date(`${isoDate}T00:00:00.000Z`)
+    date.setUTCDate(date.getUTCDate() + days)
+    return date.toISOString().slice(0, 10)
+  }
+
+  const getNextBlockedStartAfter = (date: string) => {
+    if (!date) {
+      return undefined
+    }
+
+    return unavailableRanges.find((range) => range.startDate > date)?.startDate
+  }
+
+  const shouldDisableCheckInDate = (date: Dayjs) => {
+    const isoDate = date.format('YYYY-MM-DD')
+    return isoDate < todayIsoDate || isDateBlocked(isoDate)
+  }
+
+  const shouldDisableCheckOutDate = (date: Dayjs) => {
+    const isoDate = date.format('YYYY-MM-DD')
+
+    if (isoDate < todayIsoDate) {
+      return true
+    }
+
+    if (!selectedCheckIn) {
+      return false
+    }
+
+    if (isoDate <= selectedCheckIn) {
+      return true
+    }
+
+    return hasDateOverlap(selectedCheckIn, isoDate)
+  }
+
+  const hasDateOverlap = (checkIn: string, checkOut: string) => {
+    if (!checkIn || !checkOut || checkOut <= checkIn) {
+      return false
+    }
+
+    return unavailableRanges.some(
+      (range) => checkIn < range.endDate && checkOut > range.startDate,
+    )
+  }
+
+  const isDateBlocked = (date: string) => {
+    if (!date) {
+      return false
+    }
+
+    return unavailableRanges.some(
+      (range) => date >= range.startDate && date < range.endDate,
+    )
+  }
+
+  useEffect(() => {
+    const loadAvailability = async () => {
+      if (!selectedPropertyId) {
+        setUnavailableRanges([])
+        setAvailabilityError(false)
+        setIsAvailabilityApiSupported(true)
+        setIsAvailabilityTokenInvalid(false)
+        setIsAvailabilityFeedUnavailable(false)
+        setIsAvailabilityLoading(false)
+        return
+      }
+
+      setIsAvailabilityLoading(true)
+      setAvailabilityError(false)
+      setIsAvailabilityTokenInvalid(false)
+      setIsAvailabilityFeedUnavailable(false)
+
+      try {
+        const response = await fetch(
+          `/api/get-property-availability?propertyId=${encodeURIComponent(selectedPropertyId)}`,
+        )
+
+        const contentType = response.headers.get('content-type') || ''
+        if (!contentType.includes('application/json')) {
+          setUnavailableRanges([])
+          setAvailabilityError(false)
+          setIsAvailabilityApiSupported(false)
+          return
+        }
+
+        setIsAvailabilityApiSupported(true)
+
+        if (!response.ok) {
+          throw new Error('availability-error')
+        }
+
+        const data = (await response.json()) as {
+          unavailableRanges?: AvailabilityRange[]
+          source?: string
+        }
+
+        setUnavailableRanges(data.unavailableRanges ?? [])
+        setIsAvailabilityTokenInvalid(data.source === 'invalid-token')
+        setIsAvailabilityFeedUnavailable(data.source === 'unavailable')
+      } catch {
+        setUnavailableRanges([])
+        setAvailabilityError(true)
+        setIsAvailabilityApiSupported(true)
+        setIsAvailabilityTokenInvalid(false)
+        setIsAvailabilityFeedUnavailable(false)
+      } finally {
+        setIsAvailabilityLoading(false)
+      }
+    }
+
+    void loadAvailability()
+  }, [selectedPropertyId])
+
+  useEffect(() => {
+    if (!selectedCheckIn && !selectedCheckOut) {
+      return
+    }
+
+    void trigger(['checkIn', 'checkOut'])
+  }, [unavailableRanges, selectedCheckIn, selectedCheckOut, trigger])
 
   const onSubmitBooking = async (values: BookingFormValues) => {
     const selectedHome = homes.find((home) => home.id === values.propertyId)
@@ -408,6 +618,44 @@ function App() {
       description: translation?.description ?? home.description,
       highlights: translation?.highlights ?? home.highlights,
     }
+  }
+
+  const getWhatsappPrefilledMessage = () => {
+    if (language === 'en') {
+      return 'Hello, I would like booking information about your homes in Cefalu.'
+    }
+
+    if (language === 'es') {
+      return 'Hola, me gustaria recibir informacion para reservar sus alojamientos en Cefalu.'
+    }
+
+    if (language === 'fr') {
+      return 'Bonjour, je souhaite recevoir des informations pour reserver vos logements a Cefalu.'
+    }
+
+    return 'Ciao, vorrei ricevere informazioni per prenotare le vostre case vacanze a Cefalu.'
+  }
+
+  const getWhatsappUrl = (phone: string) => {
+    const normalizedPhone = phone.replace(/[^0-9]/g, '')
+    const text = encodeURIComponent(getWhatsappPrefilledMessage())
+    return `https://wa.me/${normalizedPhone}?text=${text}`
+  }
+
+  const contactAllWhatsappNumbers = () => {
+    const openedTabs = whatsappContacts.map(() => window.open('', '_blank'))
+
+    whatsappContacts.forEach((phone, index) => {
+      const tab = openedTabs[index]
+      const url = getWhatsappUrl(phone)
+
+      if (tab) {
+        tab.location.href = url
+        return
+      }
+
+      window.open(url, '_blank', 'noopener,noreferrer')
+    })
   }
 
   return (
@@ -539,132 +787,398 @@ function App() {
             </section>
 
             <section className="booking-form-section">
-              <h3>{t.bookingFormTitle}</h3>
-              <p>{t.bookingFormSubtitle}</p>
-
-              <form className="booking-form" onSubmit={handleBookingSubmit}>
-                <label className="form-field">
-                  <span>{t.propertyLabel}</span>
-                  <select
-                    {...register('propertyId', {
-                      required: t.validationRequired,
-                    })}
+              <Paper
+                elevation={0}
+                sx={{
+                  borderRadius: 3,
+                  overflow: 'hidden',
+                  border: '1px solid #c7d2fe',
+                  boxShadow: '0 16px 30px rgba(30, 64, 175, 0.12)',
+                }}
+              >
+                <Box
+                  sx={{
+                    background: 'linear-gradient(90deg, #003b95 0%, #0057d9 100%)',
+                    color: '#fff',
+                    px: { xs: 2, md: 3 },
+                    py: { xs: 1.5, md: 2 },
+                  }}
+                >
+                  <Typography
+                    variant="h6"
+                    sx={{
+                      fontWeight: 900,
+                      color: '#ffffff',
+                      textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
+                    }}
                   >
-                    {homes.length === 0 && (
-                      <option value="">{t.propertyPlaceholder}</option>
+                    {t.bookingFormTitle}
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'white !important' }}>
+                    {t.bookingFormSubtitle}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ p: { xs: 1.25, md: 1.5 }, backgroundColor: '#fff' }}>
+                  {selectedPropertyId && isAvailabilityLoading && (
+                    <Alert severity="info" sx={{ mb: 1 }}>
+                      {t.availabilityLoading}
+                    </Alert>
+                  )}
+                  {selectedPropertyId &&
+                    !isAvailabilityLoading &&
+                    !isAvailabilityApiSupported && (
+                      <Alert severity="info" sx={{ mb: 1 }}>
+                        {t.availabilityLocalDev}
+                      </Alert>
                     )}
-                    {homes.map((home) => (
-                      <option key={home.id} value={home.id}>
-                        {home.name}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.propertyId && (
-                    <small className="field-error">{errors.propertyId.message}</small>
-                  )}
-                </label>
+                  {selectedPropertyId &&
+                    !isAvailabilityLoading &&
+                    isAvailabilityTokenInvalid && (
+                      <Alert severity="error" sx={{ mb: 1 }}>
+                        {t.availabilityInvalidToken}
+                      </Alert>
+                    )}
+                  {selectedPropertyId &&
+                    !isAvailabilityLoading &&
+                    isAvailabilityFeedUnavailable && (
+                      <Alert severity="warning" sx={{ mb: 1 }}>
+                        {t.availabilityFeedUnavailable}
+                      </Alert>
+                    )}
+                  {selectedPropertyId &&
+                    !isAvailabilityLoading &&
+                    !availabilityError &&
+                    isAvailabilityApiSupported &&
+                    !isAvailabilityTokenInvalid &&
+                    !isAvailabilityFeedUnavailable && (
+                      <Alert severity="success" sx={{ mb: 1 }}>
+                        {t.availabilitySynced}
+                      </Alert>
+                    )}
+                  {selectedPropertyId &&
+                    availabilityError &&
+                    isAvailabilityApiSupported && (
+                      <Alert severity="error" sx={{ mb: 1 }}>
+                        {t.availabilityError}
+                      </Alert>
+                    )}
 
-                <label className="form-field">
-                  <span>{t.guestsLabel}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={4}
-                    {...register('guests', {
-                      required: t.validationRequired,
-                      valueAsNumber: true,
-                      min: { value: 1, message: t.validationGuestsMin },
-                      max: { value: 4, message: t.validationGuestsMax },
-                    })}
-                  />
-                  {errors.guests && (
-                    <small className="field-error">{errors.guests.message}</small>
-                  )}
-                </label>
+                  <LocalizationProvider dateAdapter={AdapterDayjs}>
+                    <Box
+                      component="form"
+                      onSubmit={handleBookingSubmit}
+                      sx={{
+                        display: 'grid',
+                        gap: 1,
+                      }}
+                    >
+                      <Stack
+                        direction={{ xs: 'column', md: 'row' }}
+                        spacing={1}
+                        sx={{
+                          '& .MuiFormControl-root': {
+                            flex: 1,
+                          },
+                        }}
+                      >
+                        <TextField
+                          select
+                          label={t.propertyLabel}
+                          size="small"
+                          error={Boolean(errors.propertyId)}
+                          helperText={errors.propertyId?.message}
+                          {...register('propertyId', {
+                            required: t.validationRequired,
+                          })}
+                        >
+                          {homes.length === 0 && (
+                            <MenuItem value="">{t.propertyPlaceholder}</MenuItem>
+                          )}
+                          {homes.map((home) => (
+                            <MenuItem key={home.id} value={home.id}>
+                              {home.name}
+                            </MenuItem>
+                          ))}
+                        </TextField>
 
-                <label className="form-field">
-                  <span>{t.checkInLabel}</span>
-                  <input
-                    type="date"
-                    {...register('checkIn', {
-                      required: t.validationRequired,
-                    })}
-                  />
-                  {errors.checkIn && (
-                    <small className="field-error">{errors.checkIn.message}</small>
-                  )}
-                </label>
+                        <TextField
+                          label={t.guestsLabel}
+                          type="number"
+                          size="small"
+                          error={Boolean(errors.guests)}
+                          helperText={errors.guests?.message}
+                          inputProps={{ min: 1, max: 4 }}
+                          {...register('guests', {
+                            required: t.validationRequired,
+                            valueAsNumber: true,
+                            min: { value: 1, message: t.validationGuestsMin },
+                            max: { value: 4, message: t.validationGuestsMax },
+                          })}
+                        />
 
-                <label className="form-field">
-                  <span>{t.checkOutLabel}</span>
-                  <input
-                    type="date"
-                    {...register('checkOut', {
-                      required: t.validationRequired,
-                      validate: (value, formValues) =>
-                        value > formValues.checkIn || t.validationDateOrder,
-                    })}
-                  />
-                  {errors.checkOut && (
-                    <small className="field-error">{errors.checkOut.message}</small>
-                  )}
-                </label>
+                        <Controller
+                          name="checkIn"
+                          control={control}
+                          rules={{
+                            required: t.validationRequired,
+                            validate: (value) =>
+                              !value ||
+                              !isDateBlocked(value) ||
+                              t.availabilityUnavailable,
+                          }}
+                          render={({ field, fieldState }) => (
+                            <DatePicker
+                              label={t.checkInLabel}
+                              value={field.value ? dayjs(field.value) : null}
+                              onChange={(newValue) => {
+                                if (!newValue) {
+                                  field.onChange('')
+                                  clearErrors('checkIn')
+                                  return
+                                }
 
-                <label className="form-field">
-                  <span>{t.emailLabel}</span>
-                  <input
-                    type="email"
-                    {...register('email', {
-                      required: t.validationRequired,
-                      pattern: {
-                        value: /^\S+@\S+\.\S+$/,
-                        message: t.validationEmail,
-                      },
-                    })}
-                  />
-                  {errors.email && (
-                    <small className="field-error">{errors.email.message}</small>
-                  )}
-                </label>
+                                const nextCheckIn = newValue.format('YYYY-MM-DD')
 
-                <label className="form-field">
-                  <span>{t.whatsappLabel}</span>
-                  <input
-                    type="tel"
-                    placeholder="+39 333 1234567"
-                    {...register('whatsapp', {
-                      validate: (value) => {
-                        if (!value) {
-                          return true
-                        }
-                        return /^[+]?[- 0-9()]{6,20}$/.test(value)
-                          ? true
-                          : t.validationWhatsapp
-                      },
-                    })}
-                  />
-                  {errors.whatsapp && (
-                    <small className="field-error">{errors.whatsapp.message}</small>
-                  )}
-                </label>
+                                if (shouldDisableCheckInDate(newValue)) {
+                                  field.onChange('')
+                                  setFieldError('checkIn', {
+                                    type: 'manual',
+                                    message: t.availabilityUnavailable,
+                                  })
+                                  return
+                                }
 
-                <button className="submit-btn" type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? t.sendingLabel : t.submitLabel}
-                </button>
+                                field.onChange(nextCheckIn)
+                                clearErrors('checkIn')
 
-                {bookingResult && (
-                  <p
-                    className={`submit-message ${bookingResult.type === 'success' ? 'success' : 'error'
-                      }`}
-                  >
-                    {bookingResult.message}
-                  </p>
-                )}
-              </form>
+                                if (!selectedCheckOut) {
+                                  return
+                                }
+
+                                if (selectedCheckOut <= nextCheckIn) {
+                                  setValue('checkOut', '', {
+                                    shouldValidate: true,
+                                    shouldTouch: true,
+                                  })
+                                  setFieldError('checkOut', {
+                                    type: 'manual',
+                                    message: t.validationDateOrder,
+                                  })
+                                  return
+                                }
+
+                                if (hasDateOverlap(nextCheckIn, selectedCheckOut)) {
+                                  setValue('checkOut', '', {
+                                    shouldValidate: true,
+                                    shouldTouch: true,
+                                  })
+                                  setFieldError('checkOut', {
+                                    type: 'manual',
+                                    message: t.availabilityUnavailable,
+                                  })
+                                  return
+                                }
+
+                                clearErrors('checkOut')
+                              }}
+                              shouldDisableDate={shouldDisableCheckInDate}
+                              minDate={dayjs(todayIsoDate)}
+                              slotProps={{
+                                textField: {
+                                  size: 'small',
+                                  error: Boolean(fieldState.error),
+                                  helperText: fieldState.error?.message,
+                                },
+                                day: {
+                                  sx: {
+                                    '&.Mui-disabled': {
+                                      color: '#94a3b8',
+                                      backgroundColor: '#f1f5f9',
+                                    },
+                                  },
+                                },
+                              }}
+                            />
+                          )}
+                        />
+
+                        <Controller
+                          name="checkOut"
+                          control={control}
+                          rules={{
+                            required: t.validationRequired,
+                            validate: (value, formValues) => {
+                              if (value <= formValues.checkIn) {
+                                return t.validationDateOrder
+                              }
+
+                              if (hasDateOverlap(formValues.checkIn, value)) {
+                                return t.availabilityUnavailable
+                              }
+
+                              return true
+                            },
+                          }}
+                          render={({ field, fieldState }) =>
+                            (() => {
+                              const nextBlockedStart = selectedCheckIn
+                                ? getNextBlockedStartAfter(selectedCheckIn)
+                                : undefined
+
+                              return (
+                                <DatePicker
+                                  label={t.checkOutLabel}
+                                  value={field.value ? dayjs(field.value) : null}
+                                  onChange={(newValue) => {
+                                    const nextCheckOut = newValue
+                                      ? newValue.format('YYYY-MM-DD')
+                                      : ''
+
+                                    if (!nextCheckOut) {
+                                      field.onChange('')
+                                      clearErrors('checkOut')
+                                      return
+                                    }
+
+                                    if (nextCheckOut <= selectedCheckIn) {
+                                      field.onChange('')
+                                      setFieldError('checkOut', {
+                                        type: 'manual',
+                                        message: t.validationDateOrder,
+                                      })
+                                      return
+                                    }
+
+                                    if (hasDateOverlap(selectedCheckIn, nextCheckOut)) {
+                                      field.onChange('')
+                                      setFieldError('checkOut', {
+                                        type: 'manual',
+                                        message: t.availabilityUnavailable,
+                                      })
+                                      return
+                                    }
+
+                                    field.onChange(nextCheckOut)
+                                    clearErrors('checkOut')
+                                  }}
+                                  shouldDisableDate={shouldDisableCheckOutDate}
+                                  minDate={
+                                    selectedCheckIn
+                                      ? dayjs(addDaysToIsoDate(selectedCheckIn, 1))
+                                      : dayjs(todayIsoDate)
+                                  }
+                                  maxDate={
+                                    nextBlockedStart ? dayjs(nextBlockedStart) : undefined
+                                  }
+                                  disabled={!selectedCheckIn}
+                                  slotProps={{
+                                    textField: {
+                                      size: 'small',
+                                      error: Boolean(fieldState.error),
+                                      helperText: fieldState.error?.message,
+                                    },
+                                    day: {
+                                      sx: {
+                                        '&.Mui-disabled': {
+                                          color: '#94a3b8',
+                                          backgroundColor: '#f1f5f9',
+                                        },
+                                      },
+                                    },
+                                  }}
+                                />
+                              )
+                            })()
+                          }
+                        />
+                      </Stack>
+
+                      <Stack direction={{ xs: 'column', md: 'row' }} spacing={1}>
+                        <TextField
+                          label={t.emailLabel}
+                          type="email"
+                          size="small"
+                          fullWidth
+                          error={Boolean(errors.email)}
+                          helperText={errors.email?.message}
+                          {...register('email', {
+                            required: t.validationRequired,
+                            pattern: {
+                              value: /^\S+@\S+\.\S+$/,
+                              message: t.validationEmail,
+                            },
+                          })}
+                        />
+
+                        <TextField
+                          label={t.whatsappLabel}
+                          type="tel"
+                          size="small"
+                          fullWidth
+                          placeholder="+39 333 1234567"
+                          error={Boolean(errors.whatsapp)}
+                          helperText={errors.whatsapp?.message}
+                          {...register('whatsapp', {
+                            validate: (value) => {
+                              if (!value) {
+                                return true
+                              }
+                              return /^[+]?[- 0-9()]{6,20}$/.test(value)
+                                ? true
+                                : t.validationWhatsapp
+                            },
+                          })}
+                        />
+
+                        <Button
+                          type="submit"
+                          variant="contained"
+                          disableElevation
+                          disabled={isSubmitting}
+                          sx={{
+                            minWidth: { xs: '100%', md: 220 },
+                            fontWeight: 800,
+                            fontSize: '0.95rem',
+                            borderRadius: 1.5,
+                            backgroundColor: '#febb02',
+                            color: '#1a1a1a',
+                            '&:hover': {
+                              backgroundColor: '#f5ad00',
+                            },
+                          }}
+                        >
+                          {isSubmitting ? t.sendingLabel : t.submitLabel}
+                        </Button>
+                      </Stack>
+
+                      {bookingResult && (
+                        <Alert
+                          severity={
+                            bookingResult.type === 'success' ? 'success' : 'error'
+                          }
+                        >
+                          {bookingResult.message}
+                        </Alert>
+                      )}
+                    </Box>
+                  </LocalizationProvider>
+                </Box>
+              </Paper>
             </section>
           </>
         )}
       </main>
+
+      <button
+        type="button"
+        className="whatsapp-float-button"
+        onClick={contactAllWhatsappNumbers}
+        aria-label="Contattami su WhatsApp"
+        title="Contattami su WhatsApp"
+      >
+        <WhatsAppIcon fontSize="medium" />
+      </button>
 
       <Lightbox
         open={isLightboxOpen}
